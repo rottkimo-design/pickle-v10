@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>選手資料管理</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+  .actions button {
+  margin-left: 4px;
+  padding: 4px 6px;
+}
+    body { padding: 2rem; max-width: 900px; margin: auto; }
+    .player-item { border: 1px solid #ccc; border-radius: 5px; padding: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    textarea { white-space: pre-line; }
+ 
+  .player-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  margin-bottom: 6px;
+  background-color: #ffffff;
+  box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,.075);
+}
+  
+}
+  </style>
+</head>
+<body>
+  <body class="bg-light">
+  <h2 class="text-primary mb-4">🏓 選手資料管理系統</h2>
+  
+  
+  <div class="mb-3">
+  <button class="btn btn-outline-dark" onclick="window.location.href='dupr_score_entry.html'">🔙 回到比賽分數輸入頁面</button>
+</div>
+
+  <div class="mb-3">
+    <label for="comboInput" class="form-label">📋 批次貼上選手資料：</label>
+    <textarea class="form-control" id="comboInput" rows="5" placeholder="ex : 橘子 (L2K9J6)
+ex : 洛特 / V4XKL5
+ex : Yeong Ding Hwang : 1NQ656
+ex : Randy YU  NYMD7W
+ex : Maggie Chang ,  YGDQQK"></textarea>
+  </div>
+  <div class="mb-3">
+    <button class="btn btn-primary me-2" onclick="parseComboInput()">⬆️ 批次新增選手</button>
+    <button class="btn btn-secondary" onclick="parseFlexibleInput()">🤖 智慧解析混合資料</button>
+  </div>
+
+  <div class="input-group mb-3">
+    <input type="text" class="form-control" id="playerName" placeholder="名稱 (name)">
+    <input type="text" class="form-control" id="duprId" placeholder="DUPR ID">
+    <button class="btn btn-success" onclick="addPlayer()">新增選手</button>
+  </div>
+
+  <div class="mb-3">
+    <button class="btn btn-outline-info me-2" onclick="exportCSV()">📤 匯出 CSV</button>
+    <input type="file" id="csvFileInput" accept=".csv" onchange="importCSV(event)" hidden>
+    <label for="csvFileInput" class="btn btn-outline-primary me-2">📂 匯入 CSV</label>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">🔐 管理員密碼刪除：</label>
+    <div class="input-group">
+      <input type="password" class="form-control" id="adminPassword" placeholder="請輸入密碼">
+      <button class="btn btn-outline-secondary" onclick="togglePassword()">👁‍🗨</button>
+      <button class="btn btn-danger" onclick="clearAllData()">❌ 一鍵清除所有資料</button>
+    </div>
+  </div>
+
+  <div class="mt-4">
+    <h5>📃 選手清單</h5>
+    <div id="playerList"></div>
+  </div>
+
+  <script>
+    let players = [];
+    const validHashes = [
+      "2cec8cf0e321c284fa0c2ebef804aac18bf1cbb85546f89e7e3d0b6aa8b9d2cf", // 1205
+      "f457528f5880e850a162d62a3db51dda0f8c339434dd424b9781570aab5d4abb"  // 0414
+    ];
+
+    window.onload = () => {
+      const stored = localStorage.getItem('players');
+      if (stored) {
+        players = JSON.parse(stored);
+        renderPlayers();
+      }
+    };
+
+    function saveToLocalStorage() {
+      localStorage.setItem('players', JSON.stringify(players));
+    }
+
+    function renderPlayers() {
+      const list = document.getElementById('playerList');
+      list.innerHTML = '';
+      players.forEach((player, index) => {
+        const item = document.createElement('div');
+        item.className = 'player-item';
+        item.innerHTML = `<span>${player.name} (${player.duprId})</span>
+          <div>
+            <button class="btn btn-sm btn-outline-secondary me-1" onclick="editPlayer(${index})">✏️</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deletePlayer(${index})">🗑️</button>
+          </div>`;
+        list.appendChild(item);
+      });
+    }
+
+    function isDuplicate(duprId) {
+      return players.some(p => p.duprId.toUpperCase() === duprId.toUpperCase());
+    }
+
+    function addPlayer() {
+      const name = document.getElementById('playerName').value.trim();
+      const duprId = document.getElementById('duprId').value.trim();
+      if (!name || !duprId) return alert('請輸入完整資料');
+      if (isDuplicate(duprId)) return alert('此選手已存在');
+      players.push({ name, duprId });
+      saveToLocalStorage();
+      renderPlayers();
+      document.getElementById('playerName').value = '';
+      document.getElementById('duprId').value = '';
+    }
+
+    function deletePlayer(index) {
+      if (confirm("確定要刪除這筆資料嗎？")) {
+        players.splice(index, 1);
+        saveToLocalStorage();
+        renderPlayers();
+      }
+    }
+
+    function editPlayer(index) {
+      const newName = prompt("請輸入新的選手名稱：", players[index].name);
+      if (newName) {
+        players[index].name = newName.trim();
+        saveToLocalStorage();
+        renderPlayers();
+      }
+    }
+
+    function exportCSV() {
+      if (players.length === 0) return alert("目前沒有資料可匯出！");
+      let csv = "name,duprId\n";
+      players.forEach(p => csv += `"${p.name}","${p.duprId}"\n`);
+      const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "players.csv";
+      link.click();
+    }
+
+    function importCSV(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const lines = e.target.result.split('\n').filter(Boolean);
+        lines.shift();
+        let added = 0;
+        lines.forEach(line => {
+          const [name, duprId] = line.replace(/["']/g, '').split(',');
+          if (name && duprId && !isDuplicate(duprId.trim())) {
+            players.push({ name: name.trim(), duprId: duprId.trim() });
+            added++;
+          }
+        });
+        saveToLocalStorage();
+        renderPlayers();
+        alert(`成功匯入 ${added} 筆新選手資料！`);
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    function parseComboInput() {
+      const lines = document.getElementById('comboInput').value.trim().split('\n').filter(Boolean);
+      let added = 0, skipped = 0;
+      lines.forEach(line => {
+        const match = line.match(/^(.+?)\s*\(([^)]+)\)$/);
+        if (match) {
+          const name = match[1].trim(), duprId = match[2].trim();
+          if (!isDuplicate(duprId)) { players.push({ name, duprId }); added++; }
+          else skipped++;
+        }
+      });
+      saveToLocalStorage(); renderPlayers();
+      alert(`成功新增 ${added} 筆，跳過 ${skipped} 筆重複`);
+      document.getElementById('comboInput').value = '';
+    }
+
+    function parseFlexibleInput() {
+      const lines = document.getElementById('comboInput').value.trim().split('\n').filter(Boolean);
+      let added = 0, skipped = 0;
+      lines.forEach(line => {
+        const match = line.match(/(.+?)[:：\/,]?\s+(?:[0-9.]+\s+)?([A-Z0-9]{6})/);
+        if (match) {
+          const name = match[1].replace(/\d.*$/, '').trim();
+          const duprId = match[2].trim();
+          if (!isDuplicate(duprId)) { players.push({ name, duprId }); added++; }
+          else skipped++;
+        }
+      });
+      saveToLocalStorage(); renderPlayers();
+      alert(`成功解析新增 ${added} 筆，跳過 ${skipped} 筆重複`);
+      document.getElementById('comboInput').value = '';
+    }
+
+    async function hashString(str) {
+      const utf8 = new TextEncoder().encode(str);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
+      return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function clearAllData() {
+      const password = document.getElementById('adminPassword').value.trim();
+      const hash = await hashString(password);
+      if (validHashes.includes(hash)) {
+        if (confirm("確定要清除所有資料？")) {
+          players = [];
+          localStorage.removeItem('players');
+          renderPlayers();
+          alert("所有資料已刪除！");
+        }
+      } else {
+        alert("密碼錯誤，無法刪除！");
+      }
+    }
+
+    function togglePassword() {
+      const pwdInput = document.getElementById('adminPassword');
+      pwdInput.type = (pwdInput.type === 'password') ? 'text' : 'password';
+    }
+  </script>
+</body>
+</html>
