@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DUPR 比賽分數輸入（多場地）</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { padding: 2rem; }
+    .table td, .table th { vertical-align: middle; }
+    .score-input { width: 60px; text-align: center; }
+    .btn-space { margin-right: 10px; margin-bottom: 5px; }
+    #courtTabsContainer { margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 場地切換按鈕 -->
+    <div id="courtTabsContainer" class="text-center"></div>
+
+    <h2 class="text-center text-primary">Organizer: Rott</h2>
+
+    <div class="text-center mb-3">
+      <button class="btn btn-light btn-space" onclick="window.open('輸入選手資料_v4.html', '_blank')">選手資料<br>(Players)</button>
+      <button class="btn btn-dark btn-space">比賽分數<br>(Matches)</button>
+    </div>
+
+    <table class="table table-bordered">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>A1</th><th>A2</th><th>B1</th><th>B2</th>
+          <th>S/D</th>
+          <th>A Score</th><th>B Score</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="matchTableBody"></tbody>
+    </table>
+
+    <div class="row mb-3">
+      <div class="col-md-4">
+        <label for="locationInput" class="form-label">比賽地點</label>
+        <input type="text" id="locationInput" class="form-control" value="New Taipei Pickleball Association NTCPA新北市匹克球協會積穗DUPR">
+      </div>
+      <div class="col-md-4">
+        <label for="dateInput" class="form-label">比賽日期</label>
+        <input type="date" id="dateInput" class="form-control" value="2025-07-28">
+      </div>
+      <div class="col-md-4">
+        <label for="unlockPassword" class="form-label">🔑 解鎖密碼</label>
+        <input type="password" id="unlockPassword" class="form-control w-auto">
+      </div>
+    </div>
+
+    <div class="mb-3">
+      <button class="btn btn-success btn-space" onclick="addMatch()">＋ 添加比賽<br>(Add Match)</button>
+      <input type="file" id="importCSVInput" accept=".csv" style="display: none" onchange="importCSV(event)">
+      <button class="btn btn-info btn-space" onclick="document.getElementById('importCSVInput').click()">⬆ 匯入比賽資料</button>
+      <button class="btn btn-warning btn-space" onclick="exportCSV()">⬇ 匯出 CSV</button>
+    </div>
+
+    <div class="alert alert-warning text-center">
+      洛特穿線工作室 👉 <a href="https://www.facebook.com/RottStringingStudio/" target="_blank">點我了解</a>
+    </div>
+  </div>
+
+  <script>
+    const COURT_COUNT = 4;
+    let currentCourt = 1;
+    let matchData = [];
+    const validHashes = [
+      "2cec8cf0e321c284fa0c2ebef804aac18bf1cbb85546f89e7e3d0b6aa8b9d2cf",
+      "f457528f5880e850a162d62a3db51dda0f8c339434dd424b9781570aab5d4abb"
+    ];
+
+    function loadMatchData() {
+      const raw = localStorage.getItem('dupr_matches_court_' + currentCourt);
+      try { matchData = JSON.parse(raw) || []; } catch { matchData = []; }
+    }
+
+    function saveMatchData() {
+      localStorage.setItem('dupr_matches_court_' + currentCourt, JSON.stringify(matchData));
+    }
+
+    function getPlayers() {
+      const raw = localStorage.getItem('players');
+      try { return JSON.parse(raw) || []; } catch { return []; }
+    }
+
+    function initCourtTabs() {
+      const container = document.getElementById('courtTabsContainer');
+      container.innerHTML = '';
+      for (let i = 1; i <= COURT_COUNT; i++) {
+        const name = localStorage.getItem('courtName_' + i) || (i + '號場地');
+        const btn = document.createElement('button');
+        btn.id = 'courtTab' + i;
+        btn.className = 'btn btn-outline-secondary btn-space';
+        btn.textContent = name;
+        btn.addEventListener('click', () => switchCourt(i));
+        btn.addEventListener('dblclick', () => renameCourt(i));
+        container.appendChild(btn);
+      }
+    }
+
+    function renameCourt(i) {
+      const old = localStorage.getItem('courtName_' + i) || (i + '號場地');
+      const name = prompt('請輸入新的場地名稱：', old);
+      if (name) {
+        localStorage.setItem('courtName_' + i, name);
+        document.getElementById('courtTab' + i).textContent = name;
+      }
+    }
+
+    function switchCourt(i) {
+      currentCourt = i;
+      initTabStyles();
+      loadMatchData();
+      renderTable();
+    }
+
+    function initTabStyles() {
+      for (let i = 1; i <= COURT_COUNT; i++) {
+        const btn = document.getElementById('courtTab' + i);
+        btn.classList.toggle('btn-primary', i === currentCourt);
+        btn.classList.toggle('btn-outline-secondary', i !== currentCourt);
+      }
+    }
+
+    function createPlayerOptions(selected = '') {
+      const list = getPlayers();
+      let opts = '<option value="">--</option>';
+      list.forEach(p => {
+        opts += `<option value="${p.name}" ${p.name === selected ? 'selected' : ''}>${p.name}</option>`;
+      });
+      return opts;
+    }
+
+    function renderTable() {
+      saveMatchData();
+      const tbody = document.getElementById('matchTableBody');
+      tbody.innerHTML = '';
+      matchData.forEach((m, idx) => {
+        tbody.innerHTML += `
+          <tr>
+            <td>${idx+1}</td>
+            <td><select id="A1_${idx}" class="form-select" onchange="updateField(${idx}, 'A1', this.value)">${createPlayerOptions(m.A1)}</select></td>
+            <td><select id="A2_${idx}" class="form-select" onchange="updateField(${idx}, 'A2', this.value)">${createPlayerOptions(m.A2)}</select></td>
+            <td><select id="B1_${idx}" class="form-select" onchange="updateField(${idx}, 'B1', this.value)">${createPlayerOptions(m.B1)}</select></td>
+            <td><select id="B2_${idx}" class="form-select" onchange="updateField(${idx}, 'B2', this.value)">${createPlayerOptions(m.B2)}</select></td>
+            <td><select id="SD_${idx}" class="form-select" onchange="updateSD(${idx}, this.value)">
+              <option value="S" ${m.SD==='S'?'selected':''}>S</option>
+              <option value="D" ${m.SD==='D'?'selected':''}>D</option>
+            </select></td>
+            <td><input type="number" class="form-control score-input" value="${m.AScore||''}" onchange="updateField(${idx}, 'AScore', this.value)"></td>
+            <td><input type="number" class="form-control score-input" value="${m.BScore||''}" onchange="updateField(${idx}, 'BScore', this.value)"></td>
+            <td class="text-center">
+              <button class="btn btn-${m.locked? 'success':'outline-success'} btn-sm me-1" onclick="toggleLock(${idx})">${m.locked?'🔒':'🔓'}</button>
+              <button class="btn btn-danger btn-sm" onclick="confirmDelete(${idx})">🗑️</button>
+            </td>
+          </tr>`;
+      });
+      // 依照 S/D 狀態啟用/停用 A2, B2
+      matchData.forEach((m, idx) => applySDRules(idx, m.SD));
+    }
+
+    function updateField(idx, field, value) {
+      matchData[idx][field] = value;
+      saveMatchData();
+    }
+
+    function updateSD(idx, value) {
+      matchData[idx].SD = value;
+      if (value === 'S') {
+        matchData[idx].A2 = '';
+        matchData[idx].B2 = '';
+      }
+      saveMatchData();
+      applySDRules(idx, value);
+    }
+
+    function applySDRules(idx, sd) {
+      const a2 = document.getElementById(`A2_${idx}`);
+      const b2 = document.getElementById(`B2_${idx}`);
+      if (sd === 'S') {
+        a2.disabled = true; a2.value = '';
+        b2.disabled = true; b2.value = '';
+      } else {
+        a2.disabled = false;
+        b2.disabled = false;
+      }
+    }
+
+    function addMatch() {
+      matchData.push({A1:'',A2:'',B1:'',B2:'',SD:'D',AScore:'',BScore:'',locked:false});
+      renderTable();
+    }
+
+    function importCSV(e) {
+      const file = e.target.files[0]; if(!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const lines = ev.target.result.split('\n').filter(l=>l.trim());
+        matchData = lines.map(l=>{
+          const c = l.replace(/"/g,'').split(',');
+          return { A1:c[6]||'', A2:c[9]||'', B1:c[12]||'', B2:c[15]||'', SD:c[3]||'D', AScore:c[19]||'', BScore:c[20]||'', locked:false };
+        });
+        renderTable();
+      };
+      reader.readAsText(file,'utf-8');
+    }
+
+    
+function downloadCSV(filename, csvContent) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const canShareFiles = navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'text/csv' })] });
+
+  function fallbackDownload() {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if (isSafari && isIOS) {
+      // 提示長按儲存
+      showTemporaryMessage(`
+        <div class="alert alert-info">
+          無法自動下載？請長按下面連結選「儲存到檔案」或用分享功能：<br/>
+          <a href="${url}" download="${filename}">點此下載 ${filename}</a>
+        </div>
+      `, 10000);
+    } else {
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 1000 * 10);
+  }
+
+  if (isIOS && canShareFiles) {
+    const file = new File([blob], filename, { type: 'text/csv' });
+    navigator.share({
+      files: [file],
+      title: filename,
+      text: '這是你的 CSV 匯出檔案',
+    }).catch((err) => {
+      console.warn('分享失敗，退回到下載／顯示 fallback：', err);
+      fallbackDownload();
+    });
+  } else {
+    fallbackDownload();
+  }
+}
+
+function showTemporaryMessage(htmlContent, duration=5000) {
+  const wrapper=document.createElement('div');
+  wrapper.innerHTML=htmlContent;
+  wrapper.style.position='fixed';
+  wrapper.style.top='10px';
+  wrapper.style.left='50%';
+  wrapper.style.transform='translateX(-50%)';
+  wrapper.style.zIndex=9999;
+  document.body.appendChild(wrapper);
+  setTimeout(()=>{ document.body.removeChild(wrapper); }, duration);
+}
+
+function exportCSV() {
+      const players = getPlayers();
+      const getId = n=>{ const f=players.find(p=>p.name===n); return f?f.duprId:''; };
+      const loc = document.getElementById('locationInput').value;
+      const dt  = document.getElementById('dateInput').value;
+      let csv="";
+      matchData.forEach(r=>{
+        csv += [
+          '', '', '', r.SD||'D', loc, dt,
+          r.A1, getId(r.A1),'', r.A2,getId(r.A2),'', r.B1,getId(r.B1),'', r.B2,getId(r.B2),'', '', r.AScore||'', r.BScore||''
+        ].map(f=>`"${f}"`).join(',')+"\n";
+      });
+      const headered = "\uFEFF" + csv; // BOM for Excel
+      downloadCSV('dupr_scores.csv', headered);
+}
+
+async function toggleLock(i) {
+      if(!matchData[i].locked) {
+        matchData[i].locked = true; renderTable();
+      } else {
+        const pwd = document.getElementById('unlockPassword').value.trim(); if(!pwd) return alert('請先輸入密碼！');
+        const h = await hashString(pwd);
+        if(validHashes.includes(h)) { matchData[i].locked = false; renderTable(); }
+        else alert('密碼錯誤無法解鎖');
+      }
+    }
+
+    async function confirmDelete(i) {
+      if(!matchData[i].locked) {
+        if(confirm('確定刪除？')) matchData.splice(i,1), renderTable();
+      } else {
+        const pwd = prompt('已鎖定，請輸入密碼：'); if(!pwd) return;
+        const h = await hashString(pwd);
+        if(validHashes.includes(h) && confirm('密碼正確，確定刪除？')) { matchData.splice(i,1); renderTable(); }
+        else alert('密碼錯誤');
+      }
+    }
+
+    async function hashString(s) {
+      const buf = new TextEncoder().encode(s);
+      const hash = await crypto.subtle.digest('SHA-256', buf);
+      return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initCourtTabs();
+      switchCourt(1);
+    });
+  </script>
+</body>
+</html>
